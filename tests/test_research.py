@@ -32,6 +32,18 @@ class SyracuseTests(unittest.TestCase):
             export_csv(db, csv)
             self.assertEqual(len(csv.read_text().splitlines()), 31)
 
+    def test_parallel_scan_and_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "parallel.db"
+            scan(1, 150, 1000, 2, db, 10)
+            scan(1, 150, 1000, 2, db, 10)
+            with sqlite3.connect(db) as connection:
+                count, incomplete = connection.execute(
+                    "SELECT COUNT(*), SUM(status != 'reached_1') FROM results"
+                ).fetchone()
+                self.assertEqual(count, 150)
+                self.assertEqual(incomplete, 0)
+
     def test_retry_after_increased_limit(self):
         with tempfile.TemporaryDirectory() as directory:
             db = Path(directory) / "results.db"
