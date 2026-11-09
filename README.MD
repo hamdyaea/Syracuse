@@ -124,6 +124,34 @@ The SVG above is generated from the exact Collatz sequence of 837799 (524 steps,
 python3 syracuse.py 837799 --plot collatz-837799.png
 ```
 
+## Explore large random integers and local records
+
+Use `explore.py` to explore **large random starting values**, rather than attempting to surpass exhaustive global verification records. The results are **records within your own sample**, not mathematical world records or counterexamples.
+
+```bash
+# 10,000 reproducible random 80-bit starting values with 4 processes
+python3 explore.py --count 10000 --bits 80 --seed 2026 --workers 4
+
+# Explore 1,000 random 128-bit integers, with a separate database
+python3 explore.py --count 1000 --bits 128 --seed 2027 --workers 4 \
+  --database explore-128.sqlite3
+
+# Read the highest peak and longest completed stopping time in saved samples
+python3 explore.py --records-only --database explore-128.sqlite3
+
+# Export record summary as CSV
+python3 explore.py --records-only --database explore-128.sqlite3 \
+  --export-records records.csv
+
+# Create a PNG showing the most interesting completed trajectories
+python3 explore.py --records-only --database explore-128.sqlite3 \
+  --plot-records records.png
+```
+
+`--seed` makes samples reproducible; `--bits` sets the exact bit length of starting numbers. SQLite stores these arbitrary-size integers as text. Completed samples are skipped on rerun with the same seed and database. Samples that reached the step limit are retried when `--max-steps` is increased. Changing the seed or bit length explores additional numbers in the same database.
+
+For plotting, install optional Matplotlib. The `--plot-records` option draws the longest completed trajectory and the highest completed peak from the database; these may be the same starting number. If a sample reaches the configured step limit, it is **unresolved**, not a counterexample.
+
 ## Performance and correctness
 
 The parallel engine sends batches of starting integers to worker processes, memoizes only tails already known to reach 1, and stores each batch transactionally. This reduces SQLite query overhead and repeated Collatz arithmetic. Actual speedups depend on CPU, database, batch size and the range being tested.
