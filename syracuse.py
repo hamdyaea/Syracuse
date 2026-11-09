@@ -110,7 +110,7 @@ def init_db(connection: sqlite3.Connection) -> None:
 
 def scan(start: int, end: int, max_steps: int, workers: int,
          database: Path, batch_size: int = 1000) -> None:
-    """Scan in bounded batches; all SQLite access stays in the parent process."""
+    """Scan in bounded batches with thread-local SQLite reader and parent writer."""
     if not 1 <= start <= end or max_steps < 1 or workers < 1 or batch_size < 1:
         raise ValueError("Invalid scan parameters")
     if end > 2**63 - 1:
@@ -132,7 +132,7 @@ def scan(start: int, end: int, max_steps: int, workers: int,
                     known = {
                         n: (status, limit)
                         for n, status, limit in reader.execute(
-                        "SELECT start, status, max_steps FROM results "
+                            "SELECT start, status, max_steps FROM results "
                             "WHERE start BETWEEN ? AND ?", (low, high)
                         )
                     }
