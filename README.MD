@@ -152,6 +152,52 @@ python3 explore.py --records-only --database explore-128.sqlite3 \
 
 For plotting, install optional Matplotlib. The `--plot-records` option draws the longest completed trajectory and the highest completed peak from the database; these may be the same starting number. If a sample reaches the configured step limit, it is **unresolved**, not a counterexample.
 
+## Experimental results: 100 million and 80-bit sampling (November 2026)
+
+The following measurements were supplied from actual local runs. They are **not world records** and do not prove the conjecture. The two workloads are different and their runtimes must not be compared as equivalent benchmarks.
+
+### Exhaustive scan: 1 to 100,000,000
+
+The existing SQLite database already contained 10 million completed rows. The following run added **90 million** new values, reaching a total of **100 million**:
+
+| Metric | Recorded result |
+|---|---:|
+| Stored starting integers | 100,000,000 |
+| Newly evaluated in this run | 90,000,000 |
+| Unresolved | 0 |
+| Elapsed time for new work | 843.79 seconds |
+| Longest trajectory among newly evaluated | 949 steps, start 63,728,127 |
+| Largest peak among newly evaluated | 2,185,143,829,170,100, start 80,049,391 |
+
+These records are explicitly scoped to the **newly evaluated 90 million**; they are not automatically global database records.
+
+### Random exploration: 10,000 reproducible 80-bit numbers
+
+```bash
+python3 explore.py --count 10000 --bits 80 --seed 2026 --workers 4
+python3 explore.py --records-only --plot-records records.png
+```
+
+| Metric | Recorded result |
+|---|---:|
+| Sampled starting integers | 10,000 |
+| Reached 1 | 10,000 |
+| Step-limited | 0 |
+| Cycles | 0 |
+| Elapsed time | 0.74 seconds |
+| Longest trajectory | 1,096 steps |
+| Starting number for longest trajectory | 1104823904239754287061021 |
+| Largest peak | 40,629,227,929,758,396,698,586,962,452 |
+| Starting number for largest peak | 940650244392214025767593 |
+
+The longest-trajectory starting number reaches a peak of 18,661,803,014,906,130,590,726,848. The largest-peak starting number reaches 1 in 951 steps.
+
+![Reconstructed 80-bit exploration trajectories](docs/records-80bit.svg)
+
+The SVG is reconstructed directly from the two recorded starting numbers using the project's exact recurrence. To reproduce the corresponding Matplotlib PNG locally, run the `--plot-records` command above against the saved `syracuse-explore.sqlite3` database.
+
+**Interpretation:** The sample contains interesting local records, but does not establish new mathematical results beyond the tested starting values. The elapsed times include process and persistence overhead and vary by hardware.
+
 ## Performance and correctness
 
 The parallel engine sends batches of starting integers to worker processes, memoizes only tails already known to reach 1, and stores each batch transactionally. This reduces SQLite query overhead and repeated Collatz arithmetic. Actual speedups depend on CPU, database, batch size and the range being tested.
