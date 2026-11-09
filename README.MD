@@ -21,6 +21,25 @@ The conjecture states that every positive integer eventually reaches 1 when even
 - Distinguishes `reached_1`, `limit`, and `cycle`
 - CSV export and automated tests
 
+## Rust migration (experimental)
+
+A native Rust engine is now available in [rust/](rust/README.md). It uses
+arbitrary-precision integers and currently supports individual values and
+sequential ranges. It **does not yet replace** Python's SQLite/resume, parallel
+scanning, random exploration or graphics.
+
+```bash
+cd rust
+cargo test
+cargo build --release
+./target/release/syracuse-rs 27
+./target/release/syracuse-rs --start 1 --end 1000000
+```
+
+The next milestones are correctness parity, Rayon, a checked u64/u128 fast
+path, SQLite compatibility, and reproducible benchmarks. Keep using the
+Python CLI for production experiments until these are validated.
+
 ## Requirements
 
 - Python 3.10+ (standard library for scanning, saving and exporting)
