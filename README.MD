@@ -99,6 +99,31 @@ A sample run on positive integers from 1 through 1,000,000 reported:
 
 These are example results from a user run, **not** a performance guarantee or a benchmark of the optimized implementation.
 
+### Verified scan through 10 million (previous engine)
+
+The following values were reported from a local scan with four workers. The database already contained the first 1,000,000 values; the reported runtime covers only the **9,000,000 newly processed** starting integers.
+
+| Metric | Result |
+|---|---:|
+| Range in database | 1–10,000,000 |
+| Newly processed | 9,000,000 |
+| Unresolved trajectories | 0 |
+| Elapsed time for new work | 364.30 seconds |
+| Longest newly completed trajectory | 685 steps, start 8,400,511 |
+| Highest newly completed peak | 60,342,610,919,632, start 6,631,675 |
+
+These are user-provided run results from the **pre-optimization engine**, not a benchmark of the current optimized engine. For comparison, a separate clean database should be used.
+
+### Example trajectory graph
+
+![Collatz trajectory of 837799](docs/collatz-837799.svg)
+
+The SVG above is generated from the exact Collatz sequence of 837799 (524 steps, peak 2,974,984,576). To generate a Matplotlib PNG yourself:
+
+```bash
+python3 syracuse.py 837799 --plot collatz-837799.png
+```
+
 ## Performance and correctness
 
 The parallel engine sends batches of starting integers to worker processes, memoizes only tails already known to reach 1, and stores each batch transactionally. This reduces SQLite query overhead and repeated Collatz arithmetic. Actual speedups depend on CPU, database, batch size and the range being tested.
