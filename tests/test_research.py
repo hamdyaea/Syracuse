@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from syracuse import analyze, export_csv, scan, syracuse
+from syracuse import _worker_batch, analyze, export_csv, scan, syracuse
 
 
 class SyracuseTests(unittest.TestCase):
@@ -43,6 +43,29 @@ class SyracuseTests(unittest.TestCase):
                 ).fetchone()
                 self.assertEqual(count, 150)
                 self.assertEqual(incomplete, 0)
+
+    def test_cached_batches_match_reference(self):
+        numbers = list(range(1, 1001))
+        actual = _worker_batch((numbers, 1000))
+        self.assertEqual(actual, [analyze(n, 1000) for n in numbers])
+
+    def test_cached_batches_respect_limits(self):
+        numbers = list(range(1, 101))
+        for limit in (1, 5, 20, 100):
+            self.assertEqual(
+                _worker_batch((numbers, limit)),
+                [analyze(n, limit) for n in numbers],
+            )
+
+    def test_parallel_matches_serial(self):
+        with tempfile.TemporaryDirectory() as directory:
+            serial = Path(directory) / "serial.db"
+            parallel = Path(directory) / "parallel.db"
+            scan(1, 1000, 1000, 1, serial, 37)
+            scan(1, 1000, 1000, 3, parallel, 41)
+            with sqlite3.connect(serial) as left, sqlite3.connect(parallel) as right:
+                query = "SELECT start, steps, peak, status, max_steps FROM results ORDER BY start"
+                self.assertEqual(left.execute(query).fetchall(), right.execute(query).fetchall())
 
     def test_retry_after_increased_limit(self):
         with tempfile.TemporaryDirectory() as directory:
