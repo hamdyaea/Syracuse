@@ -49,8 +49,54 @@ def analyze(number: int, max_steps: int = 100_000) -> tuple[int, int, int, str]:
     raise AssertionError("unreachable")
 
 
-def _worker(job: tuple[int, int]) -> tuple[int, int, int, str]:
-    return analyze(*job)
+def _worker_batch(job: tuple[list[int], int]) -> list[tuple[int, int, int, str]]:
+    """Compute a batch with a bounded per-process stopping-time cache.
+
+    The cache stores only proven-to-reach-1 tails, never limited trajectories.
+    Peaks and stopping times use the original, uncompressed Collatz steps.
+    """
+    numbers, max_steps = job
+    cache: dict[int, tuple[int, int]] = {1: (0, 1)}
+    output = []
+    for start in numbers:
+        n = start
+        path: list[int] = []
+        seen: set[int] = set()
+        peak = n
+        status = "limit"
+        steps = 0
+        while True:
+            tail = cache.get(n)
+            if tail is not None and steps + tail[0] <= max_steps:
+                steps += tail[0]
+                peak = max(peak, tail[1])
+                status = "reached_1"
+                break
+            if n == 1:
+                status = "reached_1"
+                break
+            if n in seen:
+                status = "cycle"
+                break
+            if steps == max_steps:
+                break
+            seen.add(n)
+            path.append(n)
+            n = n // 2 if n % 2 == 0 else 3 * n + 1
+            peak = max(peak, n)
+            steps += 1
+        output.append((start, steps, peak, status))
+        if status == "reached_1":
+            # Backfill the exact remaining time and maximum for each tail.
+            remaining = steps - len(path)
+            tail_peak = cache[n][1] if n in cache else n
+            for value in reversed(path):
+                remaining += 1
+                tail_peak = max(value, tail_peak)
+                cache[value] = (remaining, tail_peak)
+            if len(cache) > 100_000:
+                cache = {1: (0, 1)}
+    return output
 
 
 def init_db(connection: sqlite3.Connection) -> None:
@@ -64,6 +110,7 @@ def init_db(connection: sqlite3.Connection) -> None:
 
 def scan(start: int, end: int, max_steps: int, workers: int,
          database: Path, batch_size: int = 1000) -> None:
+    """Scan in bounded batches; all SQLite access stays in the parent process."""
     if not 1 <= start <= end or max_steps < 1 or workers < 1 or batch_size < 1:
         raise ValueError("Invalid scan parameters")
     if end > 2**63 - 1:
@@ -71,68 +118,67 @@ def scan(start: int, end: int, max_steps: int, workers: int,
     connection = sqlite3.connect(database)
     try:
         init_db(connection)
-        # Only reuse completed rows, or incomplete rows computed with at least
-        # the current step limit. Raising the limit retries unresolved rows.
-        def pending():
-            # Pool.imap consumes its input in a feeder thread. Create the
-            # read-only connection inside that thread, never share the writer.
+        started = time.monotonic()
+        processed = 0
+        best_steps = (-1, 0)
+        best_peak = (-1, 0)
+
+        def jobs():
+            # Pool feeder may run this generator in another thread.
             reader = sqlite3.connect(database, timeout=30)
             try:
-                for n in range(start, end + 1):
-                    row = reader.execute(
-                        "SELECT status, max_steps FROM results WHERE start=?", (n,)
-                    ).fetchone()
-                    if row is None or (row[0] == "limit" and row[1] < max_steps):
-                        yield n, max_steps
+                for low in range(start, end + 1, batch_size):
+                    high = min(end, low + batch_size - 1)
+                    known = {
+                        n: (status, limit)
+                        for n, status, limit in reader.execute(
+                        "SELECT start, status, max_steps FROM results "
+                            "WHERE start BETWEEN ? AND ?", (low, high)
+                        )
+                    }
+                    pending = [
+                        n for n in range(low, high + 1)
+                        if n not in known or
+                        (known[n][0] == "limit" and known[n][1] < max_steps)
+                    ]
+                    if pending:
+                        yield pending, max_steps
             finally:
                 reader.close()
 
-        started = time.monotonic()
-        count = 0
-        best_steps = (-1, 0)
-        best_peak = (-1, 0)
-        def consume(iterator):
-            nonlocal count, best_steps, best_peak
-            buffer = []
-            for n, steps, peak, status in iterator:
-                buffer.append((n, steps, str(peak), status, max_steps))
-                count += 1
-                if status == "reached_1":
-                    if steps > best_steps[0]:
-                        best_steps = (steps, n)
-                    if peak > best_peak[0]:
-                        best_peak = (peak, n)
-                if len(buffer) >= batch_size:
-                    connection.executemany(
-                        "INSERT OR REPLACE INTO results VALUES (?,?,?,?,?)", buffer
-                    )
-                    connection.commit()
-                    buffer.clear()
-                    print(f"Processed {count:,} new values in "
-                          f"{time.monotonic()-started:.1f}s", flush=True)
-            if buffer:
+        def consume(batches):
+            nonlocal processed, best_steps, best_peak
+            for results in batches:
+                rows = []
+                for n, steps, peak, status in results:
+                    rows.append((n, steps, str(peak), status, max_steps))
+                    processed += 1
+                    if status == "reached_1":
+                        if steps > best_steps[0]:
+                            best_steps = (steps, n)
+                        if peak > best_peak[0]:
+                            best_peak = (peak, n)
                 connection.executemany(
-                    "INSERT OR REPLACE INTO results VALUES (?,?,?,?,?)", buffer
+                    "INSERT OR REPLACE INTO results VALUES (?,?,?,?,?)", rows
                 )
                 connection.commit()
+                if processed % (batch_size * 10) < len(results):
+                    print(f"Processed {processed:,} new values in "
+                          f"{time.monotonic()-started:.1f}s", flush=True)
 
         if workers == 1:
-            consume(map(_worker, pending()))
+            consume(map(_worker_batch, jobs()))
         else:
-            # Pool feeder thread owns its SQLite reader; main thread owns writer.
-            # imap streams results; chunksize amortizes process IPC overhead.
+            # The feeder owns a separate read connection; only parent writes.
             with mp.Pool(workers) as pool:
-                consume(pool.imap(_worker, pending(), chunksize=100))
-        total = connection.execute(
-            "SELECT COUNT(*) FROM results WHERE start BETWEEN ? AND ?",
-            (start, end),
-        ).fetchone()[0]
-        unresolved = connection.execute(
-            "SELECT COUNT(*) FROM results WHERE start BETWEEN ? AND ? "
-            "AND status != 'reached_1'", (start, end),
-        ).fetchone()[0]
-        print(f"Stored: {total:,} | Unresolved: {unresolved:,} "
-              f"| New: {count:,} | Elapsed: {time.monotonic()-started:.2f}s")
+                consume(pool.imap(_worker_batch, jobs(), chunksize=1))
+
+        total, unresolved = connection.execute(
+            "SELECT COUNT(*), SUM(status != 'reached_1') FROM results "
+            "WHERE start BETWEEN ? AND ?", (start, end)
+        ).fetchone()
+        print(f"Stored: {total:,} | Unresolved: {unresolved or 0:,} "
+              f"| New: {processed:,} | Elapsed: {time.monotonic()-started:.2f}s")
         if best_steps[0] >= 0:
             print(f"Longest newly completed trajectory: {best_steps[0]} "
                   f"steps (start={best_steps[1]})")
