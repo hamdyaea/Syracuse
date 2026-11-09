@@ -1,0 +1,10 @@
+[package]
+name = "syracuse-rs"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Native Collatz research engine"
+
+[dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
