@@ -43,8 +43,19 @@ def explore(count: int, bits: int, seed: int, max_steps: int,
         best_peak = (-1, 0)
 
         def jobs():
-            for n in sample_numbers(count, bits, seed):
-                yield (n, max_steps)
+            # This iterator is consumed by a Pool feeder thread when parallel.
+            # Own the SQLite reader in that thread; the writer stays in main.
+            reader = sqlite3.connect(database, timeout=30)
+            try:
+                for n in sample_numbers(count, bits, seed):
+                    row = reader.execute(
+                        "SELECT status, max_steps FROM samples WHERE start=?",
+                        (str(n),)
+                    ).fetchone()
+                    if row is None or (row[0] == "limit" and row[1] < max_steps):
+                        yield (n, max_steps)
+            finally:
+                reader.close()
 
         def consume(results):
             nonlocal inserted, best_steps, best_peak
