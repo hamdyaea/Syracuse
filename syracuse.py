@@ -74,12 +74,18 @@ def scan(start: int, end: int, max_steps: int, workers: int,
         # Only reuse completed rows, or incomplete rows computed with at least
         # the current step limit. Raising the limit retries unresolved rows.
         def pending():
-            for n in range(start, end + 1):
-                row = connection.execute(
-                    "SELECT status, max_steps FROM results WHERE start=?", (n,)
-                ).fetchone()
-                if row is None or (row[0] == "limit" and row[1] < max_steps):
-                    yield n, max_steps
+            # Pool.imap consumes its input in a feeder thread. Create the
+            # read-only connection inside that thread, never share the writer.
+            reader = sqlite3.connect(database, timeout=30)
+            try:
+                for n in range(start, end + 1):
+                    row = reader.execute(
+                        "SELECT status, max_steps FROM results WHERE start=?", (n,)
+                    ).fetchone()
+                    if row is None or (row[0] == "limit" and row[1] < max_steps):
+                        yield n, max_steps
+            finally:
+                reader.close()
 
         started = time.monotonic()
         count = 0
@@ -113,7 +119,7 @@ def scan(start: int, end: int, max_steps: int, workers: int,
         if workers == 1:
             consume(map(_worker, pending()))
         else:
-            # Read pending jobs before workers begin; do not share SQLite connections.
+            # Pool feeder thread owns its SQLite reader; main thread owns writer.
             # imap streams results; chunksize amortizes process IPC overhead.
             with mp.Pool(workers) as pool:
                 consume(pool.imap(_worker, pending(), chunksize=100))
