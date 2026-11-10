@@ -247,3 +247,17 @@ are historical evidence, not resumable checkpoints.
 **1,281 steps at 2392312122059220303719**. Highest peak:
 **58839970534583972839804857184 at 2392312122059243343707**.
 These are local experimental observations, not world records.
+
+### Second consecutive 100-million-number frontier run (10 November 2026)
+
+The resumable wrapper completed all **100 chunks of 1,000,000 numbers** from
+**2392312122059307475201** through **2392312122059407475200**, with
+**100,000,000 completed and 0 unresolved**. Each chunk's reported record
+trajectories were recomputed independently in Python (`verified_records=True`).
+The longest trajectory in this second range was **1,281 steps** at
+**2392312122059375943734**; the highest peak was
+**1358736166790410296614642249488** at
+**2392312122059309050532**. Together with the preceding consecutive range,
+the project has explored **200,000,000 consecutive starting values** beyond
+its historical reference frontier. This is not an audited exhaustive
+independent verification and makes no world-record claim.
