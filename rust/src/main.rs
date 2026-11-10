@@ -5,8 +5,9 @@ use num_bigint::BigUint;
 use num_traits::{One, ToPrimitive, Zero};
 use rayon::prelude::*;
 use rusqlite::{params, Connection};
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::{env, process, time::Instant};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -140,6 +141,7 @@ fn scan(lo: u64, hi: u64, max_steps: u64, workers: usize) -> Summary {
         .expect("thread pool");
     let done = AtomicU64::new(0);
     let started = Instant::now();
+    let display = Mutex::new(Progress::new());
     let total = hi - lo + 1;
     pool.install(|| {
         // Chunks bound task overhead without allocating a vector of input integers.
@@ -155,8 +157,8 @@ fn scan(lo: u64, hi: u64, max_steps: u64, workers: usize) -> Summary {
                 }
                 let completed =
                     done.fetch_add(last - first + 1, Ordering::Relaxed) + last - first + 1;
-                if completed == total || completed % 100_000 < 4096 {
-                    progress(completed, total, started);
+                if let Ok(mut display) = display.lock() {
+                    display.update(completed, total, started);
                 }
                 s
             })
@@ -164,33 +166,58 @@ fn scan(lo: u64, hi: u64, max_steps: u64, workers: usize) -> Summary {
     })
 }
 
-fn progress(done: u64, total: u64, started: Instant) {
-    let fraction = done as f64 / total as f64;
-    let filled = (fraction * 32.0).round() as usize;
-    let elapsed = started.elapsed().as_secs_f64();
-    let rate = if elapsed > 0.0 {
-        done as f64 / elapsed
-    } else {
-        0.0
-    };
-    let eta = if rate > 0.0 {
-        (total - done) as f64 / rate
-    } else {
-        0.0
-    };
-    eprint!(
-        "\\r[{}{}] {:6.2}% {:>12}/{:<12} {:>9.0}/s ETA {:>7.1}s",
-        "#".repeat(filled.min(32)),
-        "-".repeat(32 - filled.min(32)),
-        fraction * 100.0,
-        done,
-        total,
-        rate,
-        eta
-    );
-    let _ = io::stderr().flush();
-    if done == total {
-        eprintln!();
+/// Throttle terminal output; use normal newline-delimited logs when stderr is redirected.
+struct Progress {
+    last: Option<Instant>,
+    terminal: bool,
+}
+impl Progress {
+    fn new() -> Self {
+        Self {
+            last: None,
+            terminal: io::stderr().is_terminal(),
+        }
+    }
+    fn update(&mut self, done: u64, total: u64, started: Instant) {
+        let now = Instant::now();
+        if done != total
+            && self
+                .last
+                .is_some_and(|last| now.duration_since(last).as_secs_f64() < 1.0)
+        {
+            return;
+        }
+        self.last = Some(now);
+        let fraction = done as f64 / total as f64;
+        let filled = (fraction * 32.0).round() as usize;
+        let elapsed = started.elapsed().as_secs_f64();
+        let rate = if elapsed > 0.0 {
+            done as f64 / elapsed
+        } else {
+            0.0
+        };
+        let eta = if rate > 0.0 {
+            (total - done) as f64 / rate
+        } else {
+            0.0
+        };
+        let prefix = if self.terminal { "\r" } else { "" };
+        let suffix = if self.terminal && done != total {
+            ""
+        } else {
+            "\n"
+        };
+        eprint!(
+            "{prefix}[{}{}] {:6.2}% {:>12}/{:<12} {:>9.0}/s ETA {:>7.1}s{suffix}",
+            "#".repeat(filled.min(32)),
+            "-".repeat(32 - filled.min(32)),
+            fraction * 100.0,
+            done,
+            total,
+            rate,
+            eta
+        );
+        let _ = io::stderr().flush();
     }
 }
 fn scan_db(
@@ -220,6 +247,7 @@ fn scan_db(
     let mut visited = 0u64;
     let mut computed = 0u64;
     let mut summary = Summary::default();
+    let mut display = Progress::new();
     let mut first = lo;
     loop {
         let last = hi.min(first.saturating_add(batch_size - 1));
@@ -273,7 +301,7 @@ fn scan_db(
             computed += 1;
         }
         visited += last - first + 1;
-        progress(visited, total, started);
+        display.update(visited, total, started);
         if last == hi {
             break;
         }
