@@ -4,6 +4,9 @@
 use num_bigint::BigUint;
 use num_traits::{One, ToPrimitive, Zero};
 use rayon::prelude::*;
+use rusqlite::{params, Connection};
+use std::io::{self, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::{env, process, time::Instant};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -135,6 +138,9 @@ fn scan(lo: u64, hi: u64, max_steps: u64, workers: usize) -> Summary {
         .num_threads(workers)
         .build()
         .expect("thread pool");
+    let done = AtomicU64::new(0);
+    let started = Instant::now();
+    let total = hi - lo + 1;
     pool.install(|| {
         // Chunks bound task overhead without allocating a vector of input integers.
         let chunks = (hi - lo) / 4096 + 1;
@@ -147,14 +153,141 @@ fn scan(lo: u64, hi: u64, max_steps: u64, workers: usize) -> Summary {
                 for n in first..=last {
                     s.add(n, analyze(&BigUint::from(n), max_steps));
                 }
+                let completed =
+                    done.fetch_add(last - first + 1, Ordering::Relaxed) + last - first + 1;
+                if completed == total || completed % 100_000 < 4096 {
+                    progress(completed, total, started);
+                }
                 s
             })
             .reduce(Summary::default, Summary::merge)
     })
 }
+
+fn progress(done: u64, total: u64, started: Instant) {
+    let fraction = done as f64 / total as f64;
+    let filled = (fraction * 32.0).round() as usize;
+    let elapsed = started.elapsed().as_secs_f64();
+    let rate = if elapsed > 0.0 {
+        done as f64 / elapsed
+    } else {
+        0.0
+    };
+    let eta = if rate > 0.0 {
+        (total - done) as f64 / rate
+    } else {
+        0.0
+    };
+    eprint!(
+        "\\r[{}{}] {:6.2}% {:>12}/{:<12} {:>9.0}/s ETA {:>7.1}s",
+        "#".repeat(filled.min(32)),
+        "-".repeat(32 - filled.min(32)),
+        fraction * 100.0,
+        done,
+        total,
+        rate,
+        eta
+    );
+    let _ = io::stderr().flush();
+    if done == total {
+        eprintln!();
+    }
+}
+fn scan_db(
+    lo: u64,
+    hi: u64,
+    max_steps: u64,
+    workers: usize,
+    path: &str,
+    batch_size: u64,
+) -> Result<Summary, Box<dyn std::error::Error>> {
+    if hi > i64::MAX as u64 {
+        return Err("SQLite INTEGER start cannot exceed i64::MAX".into());
+    }
+    let mut db = Connection::open(path)?;
+    db.busy_timeout(std::time::Duration::from_secs(30))?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS results (
+        start INTEGER PRIMARY KEY, steps INTEGER NOT NULL,
+        peak TEXT NOT NULL, status TEXT NOT NULL, max_steps INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS results_status ON results(status);",
+    )?;
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()?;
+    let started = Instant::now();
+    let total = hi - lo + 1;
+    let mut visited = 0u64;
+    let mut computed = 0u64;
+    let mut summary = Summary::default();
+    let mut first = lo;
+    loop {
+        let last = hi.min(first.saturating_add(batch_size - 1));
+        let mut known = std::collections::HashMap::new();
+        {
+            let mut stmt = db.prepare(
+                "SELECT start,status,max_steps FROM results WHERE start BETWEEN ?1 AND ?2",
+            )?;
+            let rows = stmt.query_map(params![first as i64, last as i64], |row| {
+                Ok((
+                    row.get::<_, i64>(0)? as u64,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+            for row in rows {
+                let (n, status, limit) = row?;
+                known.insert(n, (status, limit));
+            }
+        }
+        let pending: Vec<u64> = (first..=last)
+            .filter(|n| match known.get(n) {
+                None => true,
+                Some((status, limit)) => status == "limit" && *limit < max_steps as i64,
+            })
+            .collect();
+        let rows: Vec<(u64, ResultRow)> = pool.install(|| {
+            pending
+                .par_iter()
+                .map(|&n| (n, analyze(&BigUint::from(n), max_steps)))
+                .collect()
+        });
+        {
+            let tx = db.transaction()?;
+            {
+                let mut insert = tx.prepare_cached("INSERT OR REPLACE INTO results(start,steps,peak,status,max_steps) VALUES (?1,?2,?3,?4,?5)")?;
+                for (n, r) in &rows {
+                    insert.execute(params![
+                        *n as i64,
+                        r.steps as i64,
+                        r.peak.to_string(),
+                        r.status,
+                        max_steps as i64
+                    ])?;
+                }
+            }
+            tx.commit()?;
+        }
+        for (n, r) in rows {
+            summary.add(n, r);
+            computed += 1;
+        }
+        visited += last - first + 1;
+        progress(visited, total, started);
+        if last == hi {
+            break;
+        }
+        first = last + 1;
+    }
+    println!(
+        "database={path} newly_computed={computed} visited={visited} elapsed={:.3}s",
+        started.elapsed().as_secs_f64()
+    );
+    Ok(summary)
+}
 fn usage() {
     eprintln!("Usage: syracuse-rs NUMBER [--max-steps N]");
-    eprintln!("       syracuse-rs --start N --end N [--workers N] [--max-steps N]");
+    eprintln!("       syracuse-rs --start N --end N [--workers N] [--max-steps N] [--database FILE] [--batch-size N]");
 }
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -162,11 +295,22 @@ fn main() {
     let mut start = None;
     let mut end = None;
     let mut max_steps = 100_000u64;
+    let mut database: Option<String> = None;
+    let mut batch_size = 4096u64;
     let mut workers = std::thread::available_parallelism().map_or(1, |n| n.get());
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--max-steps" | "--start" | "--end" | "--workers" => {
+            "--max-steps" | "--start" | "--end" | "--workers" | "--batch-size" | "--database" => {
+                if args[i] == "--database" {
+                    if i + 1 >= args.len() {
+                        usage();
+                        process::exit(2);
+                    }
+                    database = Some(args[i + 1].clone());
+                    i += 2;
+                    continue;
+                }
                 if i + 1 >= args.len() {
                     usage();
                     process::exit(2);
@@ -177,6 +321,7 @@ fn main() {
                 });
                 match args[i].as_str() {
                     "--max-steps" => max_steps = value,
+                    "--batch-size" => batch_size = value,
                     "--start" => start = Some(value),
                     "--end" => end = Some(value),
                     _ => workers = usize::try_from(value).unwrap_or(0),
@@ -193,7 +338,7 @@ fn main() {
             }
         }
     }
-    if max_steps == 0 || workers == 0 {
+    if max_steps == 0 || workers == 0 || batch_size == 0 || max_steps > i64::MAX as u64 {
         usage();
         process::exit(2);
     }
@@ -207,7 +352,18 @@ fn main() {
         }
         (None, Some(lo), Some(hi)) if lo > 0 && lo <= hi => {
             let t = Instant::now();
-            let r = scan(lo, hi, max_steps, workers);
+            let r = if let Some(ref path) = database {
+                match scan_db(lo, hi, max_steps, workers, path, batch_size) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("Database error: {e}");
+                        process::exit(1);
+                    }
+                }
+            } else {
+                let r = scan(lo, hi, max_steps, workers);
+                r
+            };
             println!(
                 "range={lo}..={hi} completed={} unresolved={} workers={workers} elapsed={:.3}s",
                 r.completed,
