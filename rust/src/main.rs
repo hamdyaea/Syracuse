@@ -17,29 +17,30 @@ struct ResultRow {
     status: &'static str,
 }
 fn analyze(start: &BigUint, max_steps: u64) -> ResultRow {
-    let one = BigUint::one();
     let mut big: Option<BigUint> = None;
     let mut small = start.to_u128().unwrap_or(0);
     if start.to_u128().is_none() {
         big = Some(start.clone());
     }
-    let mut peak = start.clone();
+    // Keep the peak in u128 until an actual overflow, avoiding BigUint
+    // allocations and conversions on every odd step.
+    let mut peak_small = small;
+    let mut peak_big: Option<BigUint> = big.clone();
     let mut steps = 0u64;
     while steps < max_steps {
         if let Some(n) = big.as_mut() {
-            if *n == one {
+            if *n == BigUint::one() {
                 break;
             }
-            if (&*n & &one).is_zero() {
+            if (n.bit(0)) == false {
                 *n >>= 1usize;
-                steps += 1;
             } else {
-                *n = &*n * 3u8 + &one;
-                steps += 1;
-                if *n > peak {
-                    peak = n.clone();
+                *n = &*n * 3u8 + 1u8;
+                if peak_big.as_ref().is_none_or(|peak| *n > *peak) {
+                    peak_big = Some(n.clone());
                 }
             }
+            steps += 1;
             if let Some(value) = n.to_u128() {
                 small = value;
                 big = None;
@@ -55,23 +56,23 @@ fn analyze(start: &BigUint, max_steps: u64) -> ResultRow {
             } else if let Some(next) = small.checked_mul(3).and_then(|n| n.checked_add(1)) {
                 small = next;
                 steps += 1;
-                if BigUint::from(small) > peak {
-                    peak = BigUint::from(small);
+                if peak_big.is_none() && small > peak_small {
+                    peak_small = small;
                 }
             } else {
-                let next = BigUint::from(small) * 3u8 + &one;
+                let next = BigUint::from(small) * 3u8 + 1u8;
                 steps += 1;
-                if next > peak {
-                    peak = next.clone();
+                if peak_big.as_ref().is_none_or(|peak| next > *peak) {
+                    peak_big = Some(next.clone());
                 }
                 big = Some(next);
             }
         }
     }
-    let reached = big.as_ref().map_or(small == 1, |n| *n == one);
+    let reached = big.as_ref().map_or(small == 1, |n| *n == BigUint::one());
     ResultRow {
         steps,
-        peak,
+        peak: peak_big.unwrap_or_else(|| BigUint::from(peak_small)),
         status: if reached { "reached_1" } else { "limit" },
     }
 }
