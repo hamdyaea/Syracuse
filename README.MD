@@ -21,6 +21,28 @@ The conjecture states that every positive integer eventually reaches 1 when even
 - Distinguishes `reached_1`, `limit`, and `cycle`
 - CSV export and automated tests
 
+## Native Rust acceleration and interactive research visuals (November 2026)
+
+The experimental [Rust engine](rust/README.md) now supports Rayon parallel
+range scans (`--workers`), checked `u128` arithmetic with exact `BigUint`
+fallback, and compressed even steps. Rust does **not yet** replace the
+Python SQLite persistence or seeded random explorer.
+
+```bash
+cd rust
+cargo +1.88.0 test
+cargo +1.88.0 build --release
+./target/release/syracuse-rs --start 1 --end 1000000 --workers 4
+cd ..
+python3 visualize3d.py 837799 --output syracuse-3d.html
+python3 inverse_tree.py --depth 12 --output inverse-tree.svg
+```
+
+Open the generated 3D HTML in your browser: animated, rotatable, zoomable,
+offline and dependency-free. The inverse Collatz tree is a **finite
+experiment**, not a proof of convergence. See the Rust README for caveats,
+validation details and the remaining roadmap.
+
 ## Rust migration (experimental)
 
 A native Rust engine is now available in [rust/](rust/README.md). It uses
