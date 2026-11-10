@@ -125,3 +125,22 @@ synchronous and journal modes are **not** weakened. The connection uses a
 32 MiB page cache and in-memory temporary storage. Performance depends on
 disk, database size, free space and concurrent workloads. Check `df -h .`
 before extending a large database.
+
+## Arbitrary-precision range exploration / frontier mode
+
+```bash
+./target/release/syracuse-rs --frontier --count 1000000 --workers 4
+./target/release/syracuse-rs --start 2392312122059207475201 \
+  --end 2392312122059207476200 --workers 4
+```
+
+The built-in reference is 2075 × 2^60; `--frontier` begins at the next
+integer. This is a historical/reference bound, **not a live record feed**.
+Range endpoints use `BigUint`; a single invocation is capped at `u64::MAX`
+values, and no SQLite persistence is supported beyond SQLite's signed 64-bit
+key range. This mode does not write a database or support resume.
+It reports per-window longest trajectory and peak without claiming a proof.
+
+A 1,000-number smoke test above the reference bound completed all numbers;
+longest 901 steps at 2392312122059207475311; highest peak
+1966096164757168791836944 at 2392312122059207475849.
