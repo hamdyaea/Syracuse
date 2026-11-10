@@ -261,3 +261,18 @@ The longest trajectory in this second range was **1,281 steps** at
 the project has explored **200,000,000 consecutive starting values** beyond
 its historical reference frontier. This is not an audited exhaustive
 independent verification and makes no world-record claim.
+
+### Third consecutive 100-million-number frontier run (10 November 2026)
+
+The third range, **2392312122059407475201** through
+**2392312122059507475200**, completed **100,000,000** trajectories in
+100 checkpointed chunks, with **0 unresolved**. Python independently
+recalculated the reported record trajectories in each chunk. Longest:
+**1,281 steps at 2392312122059436967137**. Highest peak:
+**627626352368956902884844261064** at **2392312122059476590418**.
+Combined with the preceding two contiguous runs, **300,000,000** consecutive
+starting values have been explored above the historical reference frontier.
+The largest observed peak across all three runs remains
+**1358736166790410296614642249488** at **2392312122059309050532**.
+This is exploratory computation, not an independently audited proof or
+verified world record.
