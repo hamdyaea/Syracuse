@@ -1,0 +1,9 @@
+
+# Rust build output
+/rust/target/
+# Local research outputs
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+__pycache__/
+*.pyc
