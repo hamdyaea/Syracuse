@@ -50,7 +50,7 @@ claims of a complete proof.
 
 ## Remaining roadmap
 
-- SQLite compatibility and resume for Rust, with migration tests against
+- Larger-scale SQLite resume benchmarks and compatibility tests against
   existing databases containing millions of records
 - Seeded random exploration in Rust, arbitrary-bit sampling and records
 - Cached stopping times, adaptive chunk sizes and performance profiling
