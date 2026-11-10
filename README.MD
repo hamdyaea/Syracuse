@@ -268,3 +268,16 @@ python3 -m unittest discover -s tests -v
 ## License and history
 
 GPL-3.0-only. Original version preserved in the [old branch](https://github.com/hamdyaea/Syracuse/tree/old).
+## Persistent Rust scans and gallery
+
+```bash
+cd rust
+cargo +1.88.0 build --release
+./target/release/syracuse-rs --start 100000001 --end 200000000 --workers 4 --database ../syracuse.sqlite3
+```
+
+Rust displays progress, ETA and throughput and saves SQLite batches in the
+Python-compatible `results` schema. You may instead use a separate
+`../syracuse-rust.sqlite3` database. Repeating a range resumes completed work.
+Generated interactive HTML and SVG examples are in [docs/gallery](docs/gallery).
+The databases are local research data and are not uploaded to GitHub.
