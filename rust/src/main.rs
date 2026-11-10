@@ -54,11 +54,15 @@ fn analyze(start: &BigUint, max_steps: u64) -> ResultRow {
                 small >>= shift;
                 steps += shift as u64;
             } else if let Some(next) = small.checked_mul(3).and_then(|n| n.checked_add(1)) {
-                small = next;
-                steps += 1;
-                if peak_big.is_none() && small > peak_small {
-                    peak_small = small;
+                // Every 3n+1 is even. Consume the odd step and the following
+                // divisions together, but count each original Collatz step.
+                if peak_big.is_none() && next > peak_small {
+                    peak_small = next;
                 }
+                let remaining_even = max_steps - steps - 1;
+                let shift = (next.trailing_zeros() as u64).min(remaining_even) as u32;
+                small = next >> shift;
+                steps += 1 + shift as u64;
             } else {
                 let next = BigUint::from(small) * 3u8 + 1u8;
                 steps += 1;
@@ -462,6 +466,30 @@ mod tests {
         for n in 1..=10000u64 {
             let n = BigUint::from(n);
             assert_eq!(analyze(&n, 10000), reference(&n, 10000));
+        }
+    }
+    #[test]
+    fn fused_odd_step_boundaries() {
+        // 3n+1 is always even: exact step limits must not overrun the
+        // original recurrence, including when only the odd step fits.
+        for n in 1..=2048u64 {
+            let start = BigUint::from(n);
+            for limit in 1..=12 {
+                assert_eq!(
+                    analyze(&start, limit),
+                    reference(&start, limit),
+                    "start={n} max_steps={limit}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn overflow_boundary_parity() {
+        for delta in [0u128, 1, 2, 3, 7, 15, 255] {
+            let start = BigUint::from(u128::MAX - delta);
+            for limit in [1, 2, 3, 4, 10, 100] {
+                assert_eq!(analyze(&start, limit), reference(&start, limit));
+            }
         }
     }
     #[test]
