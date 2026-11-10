@@ -1,289 +1,176 @@
-# Syracuse / Collatz Research Engine
+# Syracuse — Collatz Research Engine
 
-**Developer:** Hamdy Abou El Anein  
-**Contact:** info@daylightlinux.ch  
-**License:** GPL-3.0-only
+**High-performance Rust engine · SQLite checkpoints · Python scientific visualizations**
 
-A Python 3 research CLI for exploring the **Collatz conjecture**, also known as the **Syracuse conjecture** or **3n + 1 problem**.
+**Developer:** Hamdy Abou El Anein · **Contact:** info@daylightlinux.ch · **License:** GPL-3.0-only
 
-**Learn about the conjecture:** [Wikipedia (French): Conjecture de Syracuse](https://fr.wikipedia.org/wiki/Conjecture_de_Syracuse) · [Wikipedia (English): Collatz conjecture](https://en.wikipedia.org/wiki/Collatz_conjecture)
+Syracuse is an open-source research toolkit for investigating the **Collatz conjecture** (the **3n + 1 problem**). **Rust is the recommended engine for computation**: it performs parallel scans, supports arbitrarily large individual starting values, displays progress and writes resumable SQLite checkpoints. Python remains available for random sampling, CSV export and visualizations.
 
-The conjecture states that every positive integer eventually reaches 1 when even numbers are divided by 2 and odd numbers are replaced with `3n + 1`. This has **not been proven** for all positive integers. Computational checks do not constitute a mathematical proof.
+For any positive integer `n`: if `n` is even, divide by 2; otherwise compute `3n + 1`. The conjecture states that repeated application eventually reaches 1. **It remains unproved.** Finite computational experiments are not mathematical proofs.
 
-## Animated 3D visualization
+## Animated 3D trajectory
 
-[![Animated Collatz 3D trajectory for 837799](docs/gallery/collatz-3d-preview.gif)](docs/gallery/syracuse-3d.html)
+[![Animated 3D Collatz trajectory for 837799](docs/gallery/collatz-3d-preview.gif)](docs/gallery/syracuse-3d.html)
 
-*Animated preview: the 524-step trajectory of 837799, shown with a rotating logarithmic 3D embedding. [Open the full interactive 3D explorer](docs/gallery/syracuse-3d.html) for rotation, zoom, and playback controls. [Explore the inverse Collatz tree](docs/gallery/inverse-tree-interactive.html).*
+*The 524-step trajectory of 837799, displayed as a rotating logarithmic 3D embedding (not a physical orbit).*
 
-## Features
+**[Interactive 3D explorer](docs/gallery/syracuse-3d.html)** · **[Interactive inverse tree](docs/gallery/inverse-tree-interactive.html)** · **[Visualization gallery](docs/gallery/)**
 
-- Exact integer arithmetic; original, uncompressed Collatz step counts
-- Single-number sequences and optional PNG trajectory plots
-- Parallel range scanning using multiple CPU processes
-- Per-batch memoization of completed trajectories (stopping time and maximum)
-- Indexed, batched SQLite lookups instead of one query per starting integer
-- SQLite checkpoints and automatic resume of completed calculations
-- Distinguishes `reached_1`, `limit`, and `cycle`
-- CSV export and automated tests
+## Why Rust?
 
-## Interactive inverse Collatz tree (November 2026)
+- **Fast native computation:** optimized `u128` arithmetic with exact `BigUint` fallback on overflow
+- **Multicore range scans:** Rayon parallel execution with configurable `--workers`
+- **Exact results:** standard Collatz step counts, including compressed runs of even steps
+- **Resumable SQLite:** compatible with the Python `results` table; existing completed entries are skipped
+- **Progress display:** percentage, throughput and estimated time remaining; updates throttled to approximately once per second
+- **Large single values:** arbitrary-precision starting integers, beyond 128 bits
+- **Verification:** Rust unit tests compare the optimized implementation against an exact reference
 
-Generate a self-contained, offline HTML explorer with pan, zoom, selectable
-nodes, highlighted paths to 1, and depth-by-depth animation:
+Rust range scans report `reached_1` and `limit`; the Python analyzer also supports explicit cycle detection. A step limit is **not** a counterexample.
 
-```bash
-python3 inverse_explorer.py --depth 20 --max-nodes 600 --output inverse-tree-interactive.html
-xdg-open inverse-tree-interactive.html
-```
+## Quick start — Rust (recommended)
 
-This complements `inverse_tree.py` (SVG/JSON exports). The generated graph
-shows only the finite inverse branches rooted at 1; it is **not** a proof of
-universal convergence or a validation of any proposed complete proof.
-
-## Native Rust acceleration and interactive research visuals (November 2026)
-
-The experimental [Rust engine](rust/README.md) now supports Rayon parallel
-range scans (`--workers`), checked `u128` arithmetic with exact `BigUint`
-fallback, and compressed even steps. Rust does **not yet** replace the
-Python SQLite persistence or seeded random explorer.
-
-```bash
-cd rust
-cargo +1.88.0 test
-cargo +1.88.0 build --release
-./target/release/syracuse-rs --start 1 --end 1000000 --workers 4
-cd ..
-python3 visualize3d.py 837799 --output syracuse-3d.html
-python3 inverse_tree.py --depth 12 --output inverse-tree.svg
-```
-
-Open the generated 3D HTML in your browser: animated, rotatable, zoomable,
-offline and dependency-free. The inverse Collatz tree is a **finite
-experiment**, not a proof of convergence. See the Rust README for caveats,
-validation details and the remaining roadmap.
-
-## Rust migration (experimental)
-
-A native Rust engine is now available in [rust/](rust/README.md). It uses
-arbitrary-precision integers and currently supports individual values and
-sequential ranges. It **does not yet replace** Python's SQLite/resume, parallel
-scanning, random exploration or graphics.
-
-```bash
-cd rust
-cargo test
-cargo build --release
-./target/release/syracuse-rs 27
-./target/release/syracuse-rs --start 1 --end 1000000
-```
-
-The next milestones are correctness parity, Rayon, a checked u64/u128 fast
-path, SQLite compatibility, and reproducible benchmarks. Keep using the
-Python CLI for production experiments until these are validated.
-
-## Requirements
-
-- Python 3.10+ (standard library for scanning, saving and exporting)
-- Optional: Matplotlib for plotting: `python3 -m pip install matplotlib`
-
-## Installation
+Install a recent stable Rust toolchain and build the release binary:
 
 ```bash
 git clone https://github.com/hamdyaea/Syracuse.git
-cd Syracuse
-python3 -m unittest discover -s tests -v
+cd Syracuse/rust
+cargo build --release
+cargo test
 ```
 
-## Usage examples
-
-### Display a sequence
+**Manjaro note:** if your default Rust toolchain is older, use the installed 1.88 toolchain instead:
 
 ```bash
-python3 syracuse.py 27
-python3 syracuse.py 27 --max-steps 1000
+cargo +1.88.0 build --release
+cargo +1.88.0 test
 ```
 
-### Create a trajectory graph (PNG)
+### Analyze one starting number
 
 ```bash
-python3 -m pip install matplotlib
-python3 syracuse.py 27 --plot collatz-27.png
+./target/release/syracuse-rs 27
+./target/release/syracuse-rs 837799 --max-steps 100000
+```
+
+### Analyze a very large integer (arbitrary precision)
+
+```bash
+./target/release/syracuse-rs \
+  115792089237316195423570985008687907853269984665640564039457584007913129639935 \
+  --max-steps 1000000
+```
+
+### Scan one million integers with four threads
+
+```bash
+./target/release/syracuse-rs \
+  --start 1 --end 1000000 --workers 4 \
+  --database ../syracuse.sqlite3
+```
+
+### Continue beyond the first 100 million
+
+If your existing database already covers 1–100,000,000, continue with:
+
+```bash
+./target/release/syracuse-rs \
+  --start 100000001 --end 200000000 \
+  --workers 4 --max-steps 100000 \
+  --database ../syracuse.sqlite3 --batch-size 4096
+```
+
+To scan through **one billion**, change `--end 200000000` to `--end 1000000000`. Choose a range appropriate for available CPU, storage and time.
+
+**Resume after interruption:** run the same command again. Rust skips stored completed rows and recomputes previously step-limited rows only when `--max-steps` is increased. SQLite commits each batch transactionally. The progress counter measures the requested range **visited**, including skipped entries; the final `newly_computed` value counts new computations.
+
+**Database selection:** `../syracuse.sqlite3` shares the existing Python-compatible dataset. Use `../syracuse-rust.sqlite3` for an independent experiment. The schema is `results(start, steps, peak, status, max_steps)`; peaks are decimal text to preserve precision. The SQLite range key is a signed 64-bit integer (maximum `9,223,372,036,854,775,807`). Single-value Rust analysis supports larger numbers but does not save them to that table.
+
+**Without `--database`**, the range scan runs without SQLite writes; results are summarized but **cannot be resumed**. The display uses a single updating line in interactive terminals and newline-delimited progress messages when redirected. For details, see the [Rust engine documentation](rust/README.md).
+
+## Research visualizations (Python)
+
+The compute engine is Rust-first; the current plotting and interactive HTML generators remain Python-based.
+
+From the repository root:
+
+```bash
+python3 visualize3d.py 837799 --output syracuse-3d.html
+python3 inverse_explorer.py --depth 20 --max-nodes 600 --output inverse-tree-interactive.html
+python3 inverse_tree.py --depth 12 --output inverse-tree.svg
+```
+
+Open the HTML files in a browser to explore the trajectory or finite inverse tree offline. The inverse tree is a bounded visualization rooted at 1, **not** evidence of universal convergence.
+
+For an optional PNG trajectory plot (requires Matplotlib):
+
+```bash
 python3 syracuse.py 837799 --plot collatz-837799.png
 ```
 
-The generated image shows the starting value's trajectory, step by step, until 1. Plotting is optional; no graphical desktop is required because Matplotlib uses the noninteractive Agg backend.
+### Random sampling of 128-bit integers
 
-### Scan 1 million integers on 4 CPU processes
-
-```bash
-python3 syracuse.py --start 1 --end 1000000 --workers 4
-```
-
-### Extend the scan to 10 million, resuming existing results
+The seeded, persistent random explorer is still implemented in Python:
 
 ```bash
-python3 syracuse.py --start 1 --end 10000000 --workers 4 \
-  --database syracuse.sqlite3 --batch-size 5000
+python3 explore.py --count 10000 --bits 128 --seed 2027 \
+  --workers 4 --database explore-128.sqlite3
+python3 explore.py --records-only --database explore-128.sqlite3
 ```
 
-Existing completed rows in the database are skipped. Increasing `--max-steps` retries rows previously marked `limit`. Batch size controls SQLite lookup/write granularity and the amount of work reprocessed after interruption. Try `1000` (default) or `5000` and benchmark on your own hardware.
-
-### Export stored results to CSV
+For CSV export of the contiguous SQLite results:
 
 ```bash
 python3 syracuse.py --database syracuse.sqlite3 --export-csv results.csv
 ```
 
-CSV columns: `start,steps,peak,status,max_steps`. Peak values are stored as text to preserve large integer precision.
+Do not upload research databases to GitHub; keep backups before large experiments.
 
-### Test a smaller limit
+## Recorded experiments (November 2026)
 
-```bash
-python3 syracuse.py --start 1 --end 10000 --workers 2 \
-  --max-steps 100 --database limited.sqlite3
-```
+These are **local experimental observations**, not universal proofs or world records.
 
-A `limit` result means the configured step budget was exhausted, **not** that a counterexample has been discovered. A `cycle` result indicates a repeated value before reaching 1.
+| Experiment | Recorded result |
+|---|---|
+| Contiguous scan | 100,000,000 starting integers stored, from 1 to 100,000,000 |
+| Additional work in the previous Python run | 90,000,000 new integers in 843.79 seconds |
+| Unresolved in that scan | 0 |
+| Longest trajectory among those 90 million | 949 steps, starting at 63,728,127 |
+| Largest peak among those 90 million | 2,185,143,829,170,100, starting at 80,049,391 |
+| Random 80-bit sample | 10,000 starting integers; all reached 1 |
+| Longest trajectory in 80-bit sample | 1,096 steps, starting at 1104823904239754287061021 |
+| Largest peak in 80-bit sample | 40,629,227,929,758,396,698,586,962,452 |
 
-## Example results
+The 100-million range was confirmed in the existing SQLite database. The 90-million timing refers to the **previous Python implementation**, not the current Rust engine. Record values above are scoped to their respective experiments.
 
-A sample run on positive integers from 1 through 1,000,000 reported:
+![Exact trajectory of 837799](docs/collatz-837799.svg)
 
-| Metric | Result |
-|---|---:|
-| Starting integers checked | 1,000,000 |
-| Unresolved | 0 |
-| Longest stopping time | 524 steps (837799) |
-| Highest peak | 56,991,483,520 (704511) |
-| Runtime before the batching optimization | 49.68 seconds with 4 workers |
+![80-bit sample record trajectories](docs/records-80bit.svg)
 
-These are example results from a user run, **not** a performance guarantee or a benchmark of the optimized implementation.
-
-### Verified scan through 10 million (previous engine)
-
-The following values were reported from a local scan with four workers. The database already contained the first 1,000,000 values; the reported runtime covers only the **9,000,000 newly processed** starting integers.
-
-| Metric | Result |
-|---|---:|
-| Range in database | 1–10,000,000 |
-| Newly processed | 9,000,000 |
-| Unresolved trajectories | 0 |
-| Elapsed time for new work | 364.30 seconds |
-| Longest newly completed trajectory | 685 steps, start 8,400,511 |
-| Highest newly completed peak | 60,342,610,919,632, start 6,631,675 |
-
-These are user-provided run results from the **pre-optimization engine**, not a benchmark of the current optimized engine. For comparison, a separate clean database should be used.
-
-### Example trajectory graph
-
-![Collatz trajectory of 837799](docs/collatz-837799.svg)
-
-The SVG above is generated from the exact Collatz sequence of 837799 (524 steps, peak 2,974,984,576). To generate a Matplotlib PNG yourself:
+## Tests and project layout
 
 ```bash
-python3 syracuse.py 837799 --plot collatz-837799.png
-```
-
-## Explore large random integers and local records
-
-Use `explore.py` to explore **large random starting values**, rather than attempting to surpass exhaustive global verification records. The results are **records within your own sample**, not mathematical world records or counterexamples.
-
-```bash
-# 10,000 reproducible random 80-bit starting values with 4 processes
-python3 explore.py --count 10000 --bits 80 --seed 2026 --workers 4
-
-# Explore 1,000 random 128-bit integers, with a separate database
-python3 explore.py --count 1000 --bits 128 --seed 2027 --workers 4 \
-  --database explore-128.sqlite3
-
-# Read the highest peak and longest completed stopping time in saved samples
-python3 explore.py --records-only --database explore-128.sqlite3
-
-# Export record summary as CSV
-python3 explore.py --records-only --database explore-128.sqlite3 \
-  --export-records records.csv
-
-# Create a PNG showing the most interesting completed trajectories
-python3 explore.py --records-only --database explore-128.sqlite3 \
-  --plot-records records.png
-```
-
-`--seed` makes samples reproducible; `--bits` sets the exact bit length of starting numbers. SQLite stores these arbitrary-size integers as text. Completed samples are skipped on rerun with the same seed and database. Samples that reached the step limit are retried when `--max-steps` is increased. Changing the seed or bit length explores additional numbers in the same database.
-
-For plotting, install optional Matplotlib. The `--plot-records` option draws the longest completed trajectory and the highest completed peak from the database; these may be the same starting number. If a sample reaches the configured step limit, it is **unresolved**, not a counterexample.
-
-## Experimental results: 100 million and 80-bit sampling (November 2026)
-
-The following measurements were supplied from actual local runs. They are **not world records** and do not prove the conjecture. The two workloads are different and their runtimes must not be compared as equivalent benchmarks.
-
-### Exhaustive scan: 1 to 100,000,000
-
-The existing SQLite database already contained 10 million completed rows. The following run added **90 million** new values, reaching a total of **100 million**:
-
-| Metric | Recorded result |
-|---|---:|
-| Stored starting integers | 100,000,000 |
-| Newly evaluated in this run | 90,000,000 |
-| Unresolved | 0 |
-| Elapsed time for new work | 843.79 seconds |
-| Longest trajectory among newly evaluated | 949 steps, start 63,728,127 |
-| Largest peak among newly evaluated | 2,185,143,829,170,100, start 80,049,391 |
-
-These records are explicitly scoped to the **newly evaluated 90 million**; they are not automatically global database records.
-
-### Random exploration: 10,000 reproducible 80-bit numbers
-
-```bash
-python3 explore.py --count 10000 --bits 80 --seed 2026 --workers 4
-python3 explore.py --records-only --plot-records records.png
-```
-
-| Metric | Recorded result |
-|---|---:|
-| Sampled starting integers | 10,000 |
-| Reached 1 | 10,000 |
-| Step-limited | 0 |
-| Cycles | 0 |
-| Elapsed time | 0.74 seconds |
-| Longest trajectory | 1,096 steps |
-| Starting number for longest trajectory | 1104823904239754287061021 |
-| Largest peak | 40,629,227,929,758,396,698,586,962,452 |
-| Starting number for largest peak | 940650244392214025767593 |
-
-The longest-trajectory starting number reaches a peak of 18,661,803,014,906,130,590,726,848. The largest-peak starting number reaches 1 in 951 steps.
-
-![Reconstructed 80-bit exploration trajectories](docs/records-80bit.svg)
-
-The SVG is reconstructed directly from the two recorded starting numbers using the project's exact recurrence. To reproduce the corresponding Matplotlib PNG locally, run the `--plot-records` command above against the saved `syracuse-explore.sqlite3` database.
-
-**Interpretation:** The sample contains interesting local records, but does not establish new mathematical results beyond the tested starting values. The elapsed times include process and persistence overhead and vary by hardware.
-
-## Performance and correctness
-
-The parallel engine sends batches of starting integers to worker processes, memoizes only tails already known to reach 1, and stores each batch transactionally. This reduces SQLite query overhead and repeated Collatz arithmetic. Actual speedups depend on CPU, database, batch size and the range being tested.
-
-The program stores start values in SQLite's signed 64-bit INTEGER column; starting values must be at most `2**63 - 1`. Intermediate Collatz values use Python's arbitrary-precision integers.
-
-Run the test suite after upgrades:
-
-```bash
+cd rust && cargo test && cd ..
 python3 -m unittest discover -s tests -v
 ```
 
+| Path | Purpose |
+|---|---|
+| `rust/` | Native parallel Collatz engine and SQLite persistence |
+| `syracuse.py` | Python reference CLI, plotting, CSV export and SQLite |
+| `explore.py` | Seeded arbitrary-bit random sampling and local records |
+| `visualize3d.py` | Self-contained animated 3D HTML visualization |
+| `inverse_explorer.py` | Interactive finite inverse-tree HTML |
+| `inverse_tree.py` | Finite inverse-tree SVG/JSON generation |
+| `docs/gallery/` | Published GIF, HTML and SVG examples |
+| `tests/` | Python correctness tests |
+
+## Scientific limitations and next steps
+
+A completed trajectory demonstrates convergence **only for that tested starting integer**. A `limit` status means the step budget was exhausted, not that a counterexample exists. The next engineering goals include larger-scale SQLite benchmarks, Rust-native seeded random sampling, more efficient caching and a unified visualization dashboard.
+
 ## License and history
 
-GPL-3.0-only. Original version preserved in the [old branch](https://github.com/hamdyaea/Syracuse/tree/old).
-## Persistent Rust scans and gallery
+**GPL-3.0-only.** The original implementation is preserved in the [old branch](https://github.com/hamdyaea/Syracuse/tree/old).
 
-```bash
-cd rust
-cargo +1.88.0 build --release
-./target/release/syracuse-rs --start 100000001 --end 200000000 --workers 4 --database ../syracuse.sqlite3
-```
-
-Rust displays progress, ETA and throughput and saves SQLite batches in the
-Python-compatible `results` schema. You may instead use a separate
-`../syracuse-rust.sqlite3` database. Repeating a range resumes completed work.
-Generated interactive HTML and SVG examples are in [docs/gallery](docs/gallery).
-The databases are local research data and are not uploaded to GitHub.
+Further reading: [Collatz conjecture (English)](https://en.wikipedia.org/wiki/Collatz_conjecture) · [Conjecture de Syracuse (français)](https://fr.wikipedia.org/wiki/Conjecture_de_Syracuse).
