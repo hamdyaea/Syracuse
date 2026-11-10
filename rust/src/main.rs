@@ -238,6 +238,8 @@ fn scan_db(
     }
     let mut db = Connection::open(path)?;
     db.busy_timeout(std::time::Duration::from_secs(30))?;
+    // Connection-local tuning: does not weaken SQLite durability settings.
+    db.execute_batch("PRAGMA cache_size=-32768; PRAGMA temp_store=MEMORY;")?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS results (
         start INTEGER PRIMARY KEY, steps INTEGER NOT NULL,
@@ -264,7 +266,7 @@ fn scan_db(
             let rows = stmt.query_map(params![first as i64, last as i64], |row| {
                 Ok((
                     row.get::<_, i64>(0)? as u64,
-                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(1)? == "limit",
                     row.get::<_, i64>(2)?,
                 ))
             })?;
@@ -276,7 +278,7 @@ fn scan_db(
         let pending: Vec<u64> = (first..=last)
             .filter(|n| match known.get(n) {
                 None => true,
-                Some((status, limit)) => status == "limit" && *limit < max_steps as i64,
+                Some((limited, limit)) => *limited && *limit < max_steps as i64,
             })
             .collect();
         let rows: Vec<(u64, ResultRow)> = pool.install(|| {
@@ -285,7 +287,7 @@ fn scan_db(
                 .map(|&n| (n, analyze(&BigUint::from(n), max_steps)))
                 .collect()
         });
-        {
+        if !rows.is_empty() {
             let tx = db.transaction()?;
             {
                 let mut insert = tx.prepare_cached("INSERT OR REPLACE INTO results(start,steps,peak,status,max_steps) VALUES (?1,?2,?3,?4,?5)")?;
@@ -329,7 +331,7 @@ fn main() {
     let mut end = None;
     let mut max_steps = 100_000u64;
     let mut database: Option<String> = None;
-    let mut batch_size = 4096u64;
+    let mut batch_size = 16384u64;
     let mut workers = std::thread::available_parallelism().map_or(1, |n| n.get());
     let mut i = 0;
     while i < args.len() {
