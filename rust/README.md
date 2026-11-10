@@ -144,3 +144,32 @@ It reports per-window longest trajectory and peak without claiming a proof.
 A 1,000-number smoke test above the reference bound completed all numbers;
 longest 901 steps at 2392312122059207475311; highest peak
 1966096164757168791836944 at 2392312122059207475849.
+## Lightweight resumable frontier runs (November 2026)
+
+The `rust/frontier_checkpoint.py` wrapper executes contiguous chunks using the
+Rust binary and writes a compact **JSON Lines checkpoint** after each chunk,
+flushed with `fsync`. It validates the expected start/end, chunk size and step
+budget before resuming; it never creates SQLite files.
+
+```bash
+cd rust
+python3 frontier_checkpoint.py --start 2392312122059307475201 \\
+  --count 100000000 --chunk 1000000 --workers 4 \\
+  --verify --checkpoint frontier-next-100m.jsonl
+```
+
+The starting value above continues immediately **after** the previously
+reported 100-million-number range, without repeating it. `--verify` uses a
+separate, straightforward Python implementation to recompute each chunk's
+longest-trajectory and highest-peak record. **It does not independently
+recalculate every integer or certify a world record.** The checkpoint file
+contains only aggregate chunk results; no per-integer trajectories are stored.
+Keep the JSONL checkpoint if you need to resume. Existing plain-text run logs
+are historical evidence, not resumable checkpoints.
+
+**Reported previous run:** 100,000,000 numbers from
+2392312122059207475201 through 2392312122059307475200 in **33.194 s**
+(about **3,012,584 numbers/s**), with **0 unresolved**. Longest trajectory:
+**1,281 steps at 2392312122059220303719**. Highest peak:
+**58839970534583972839804857184 at 2392312122059243343707**.
+These are local experimental observations, not world records.
