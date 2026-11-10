@@ -9,3 +9,4 @@ description = "Native Collatz research engine"
 num-bigint = "0.4"
 num-traits = "0.2"
 rayon = "1.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
