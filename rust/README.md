@@ -115,3 +115,13 @@ In a small four-worker, no-database benchmark over 210,000,001–212,000,000,
 the previous version took **0.384 s** and the new version **0.281 s**
 (about **27% less time**). These are single-run observations and do not
 measure SQLite write throughput; repeat trials before generalizing.
+
+## SQLite batch tuning (November 2026)
+
+The default batch size is now **16,384**. A fresh 2-million-row SQLite
+benchmark favored 16,384 over 4,096 (4.803 s vs 5.578 s in one run;
+5.718 s vs 6.610 s in another run with connection tuning). SQLite's
+synchronous and journal modes are **not** weakened. The connection uses a
+32 MiB page cache and in-memory temporary storage. Performance depends on
+disk, database size, free space and concurrent workloads. Check `df -h .`
+before extending a large database.
