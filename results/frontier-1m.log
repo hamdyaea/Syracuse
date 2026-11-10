@@ -1,0 +1,6 @@
+[--------------------------------]   0.41%         4096/1000000         195112/s ETA     5.1s
+[################################] 100.00%      1000000/1000000        2774666/s ETA     0.0s
+range=2392312122059207475201..=2392312122059208475200 completed=1000000 unresolved=0 workers=4 elapsed=0.361s
+longest_steps=1051 start=2392312122059207496745
+highest_peak=377490463633376556170014564 start=2392312122059208414697
+mode=exploration persistence=none proof_of_world_record=false
