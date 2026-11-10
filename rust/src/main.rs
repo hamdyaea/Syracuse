@@ -171,6 +171,101 @@ fn scan(lo: u64, hi: u64, max_steps: u64, workers: usize) -> Summary {
     })
 }
 
+// Published verification frontier is configurable: never claim an independent
+// world record from exploratory trajectories.
+fn frontier() -> BigUint {
+    BigUint::from(2075u32) << 60usize
+}
+fn scan_big(
+    lo: &BigUint,
+    hi: &BigUint,
+    max_steps: u64,
+    workers: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let count = (hi - lo + BigUint::one())
+        .to_u64()
+        .ok_or("range contains more than u64::MAX values; split it into smaller windows")?;
+    if count == 0 {
+        return Err("empty range".into());
+    }
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()?;
+    let started = Instant::now();
+    let done = AtomicU64::new(0);
+    let progress = Mutex::new(Progress::new());
+    let chunks = (count - 1) / 4096 + 1;
+    let (completed, unresolved, longest, highest) = pool.install(|| {
+        (0..chunks)
+            .into_par_iter()
+            .map(|i| {
+                let offset = i * 4096;
+                let length = 4096u64.min(count - offset);
+                let mut n = lo + offset;
+                let mut completed = 0u64;
+                let mut unresolved = 0u64;
+                let mut longest: Option<(u64, BigUint)> = None;
+                let mut highest: Option<(BigUint, BigUint)> = None;
+                for _ in 0..length {
+                    let r = analyze(&n, max_steps);
+                    if r.status == "reached_1" {
+                        completed += 1;
+                        if longest.as_ref().is_none_or(|(steps, start)| {
+                            r.steps > *steps || (r.steps == *steps && n < *start)
+                        }) {
+                            longest = Some((r.steps, n.clone()));
+                        }
+                        if highest.as_ref().is_none_or(|(peak, start)| {
+                            r.peak > *peak || (r.peak == *peak && n < *start)
+                        }) {
+                            highest = Some((r.peak, n.clone()));
+                        }
+                    } else {
+                        unresolved += 1;
+                    }
+                    n += 1u8;
+                }
+                let current = done.fetch_add(length, Ordering::Relaxed) + length;
+                if let Ok(mut display) = progress.lock() {
+                    display.update(current, count, started);
+                }
+                (completed, unresolved, longest, highest)
+            })
+            .reduce(
+                || (0, 0, None, None),
+                |a, b| {
+                    let longest = match (a.2, b.2) {
+                        (Some(x), Some(y)) => Some(if x.0 > y.0 || (x.0 == y.0 && x.1 < y.1) {
+                            x
+                        } else {
+                            y
+                        }),
+                        (Some(x), None) | (None, Some(x)) => Some(x),
+                        _ => None,
+                    };
+                    let highest = match (a.3, b.3) {
+                        (Some(x), Some(y)) => Some(if x.0 > y.0 || (x.0 == y.0 && x.1 < y.1) {
+                            x
+                        } else {
+                            y
+                        }),
+                        (Some(x), None) | (None, Some(x)) => Some(x),
+                        _ => None,
+                    };
+                    (a.0 + b.0, a.1 + b.1, longest, highest)
+                },
+            )
+    });
+    println!("range={lo}..={hi} completed={completed} unresolved={unresolved} workers={workers} elapsed={:.3}s", started.elapsed().as_secs_f64());
+    if let Some((steps, start)) = longest {
+        println!("longest_steps={steps} start={start}");
+    }
+    if let Some((peak, start)) = highest {
+        println!("highest_peak={peak} start={start}");
+    }
+    println!("mode=exploration persistence=none proof_of_world_record=false");
+    Ok(())
+}
 /// Throttle terminal output; use normal newline-delimited logs when stderr is redirected.
 struct Progress {
     last: Option<Instant>,
@@ -322,13 +417,17 @@ fn scan_db(
 }
 fn usage() {
     eprintln!("Usage: syracuse-rs NUMBER [--max-steps N]");
+    eprintln!("       syracuse-rs --frontier [--count N] [--workers N] [--max-steps N]");
+    eprintln!("       syracuse-rs --start BIGINT --end BIGINT [--workers N] [--max-steps N] (no SQLite for >i64 ranges)");
     eprintln!("       syracuse-rs --start N --end N [--workers N] [--max-steps N] [--database FILE] [--batch-size N]");
 }
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let mut number = None;
-    let mut start = None;
-    let mut end = None;
+    let mut start: Option<BigUint> = None;
+    let mut end: Option<BigUint> = None;
+    let mut frontier_mode = false;
+    let mut count = 10000u64;
     let mut max_steps = 100_000u64;
     let mut database: Option<String> = None;
     let mut batch_size = 16384u64;
@@ -336,7 +435,12 @@ fn main() {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--max-steps" | "--start" | "--end" | "--workers" | "--batch-size" | "--database" => {
+            "--frontier" => {
+                frontier_mode = true;
+                i += 1;
+            }
+            "--max-steps" | "--start" | "--end" | "--workers" | "--batch-size" | "--database"
+            | "--count" => {
                 if args[i] == "--database" {
                     if i + 1 >= args.len() {
                         usage();
@@ -350,6 +454,16 @@ fn main() {
                     usage();
                     process::exit(2);
                 }
+                if args[i] == "--start" || args[i] == "--end" {
+                    let value = parse_number(&args[i + 1]);
+                    if args[i] == "--start" {
+                        start = Some(value);
+                    } else {
+                        end = Some(value);
+                    }
+                    i += 2;
+                    continue;
+                }
                 let value = args[i + 1].parse::<u64>().unwrap_or_else(|_| {
                     usage();
                     process::exit(2);
@@ -357,8 +471,7 @@ fn main() {
                 match args[i].as_str() {
                     "--max-steps" => max_steps = value,
                     "--batch-size" => batch_size = value,
-                    "--start" => start = Some(value),
-                    "--end" => end = Some(value),
+                    "--count" => count = value,
                     _ => workers = usize::try_from(value).unwrap_or(0),
                 }
                 i += 2;
@@ -373,9 +486,27 @@ fn main() {
             }
         }
     }
-    if max_steps == 0 || workers == 0 || batch_size == 0 || max_steps > i64::MAX as u64 {
+    if max_steps == 0
+        || workers == 0
+        || batch_size == 0
+        || count == 0
+        || max_steps > i64::MAX as u64
+    {
         usage();
         process::exit(2);
+    }
+    if frontier_mode {
+        if number.is_some() || start.is_some() || end.is_some() || database.is_some() {
+            eprintln!("--frontier cannot be combined with NUMBER, --start, --end or --database");
+            process::exit(2);
+        }
+        let lo = frontier() + BigUint::one();
+        let hi = &lo + (count - 1);
+        if let Err(e) = scan_big(&lo, &hi, max_steps, workers) {
+            eprintln!("Frontier scan error: {e}");
+            process::exit(1);
+        }
+        return;
     }
     match (number, start, end) {
         (Some(n), None, None) => {
@@ -385,8 +516,21 @@ fn main() {
                 r.steps, r.peak, r.status
             );
         }
-        (None, Some(lo), Some(hi)) if lo > 0 && lo <= hi => {
+        (None, Some(lo), Some(hi)) if !lo.is_zero() && lo <= hi => {
             let t = Instant::now();
+            if lo > BigUint::from(u64::MAX) || hi > BigUint::from(u64::MAX) {
+                if database.is_some() {
+                    eprintln!("SQLite mode only supports start/end <= i64::MAX; use no --database for large integers");
+                    process::exit(2);
+                }
+                if let Err(e) = scan_big(&lo, &hi, max_steps, workers) {
+                    eprintln!("Range scan error: {e}");
+                    process::exit(1);
+                }
+                return;
+            }
+            let lo = lo.to_u64().expect("checked u64");
+            let hi = hi.to_u64().expect("checked u64");
             let r = if let Some(ref path) = database {
                 match scan_db(lo, hi, max_steps, workers, path, batch_size) {
                     Ok(r) => r,
@@ -493,6 +637,10 @@ mod tests {
                 assert_eq!(analyze(&start, limit), reference(&start, limit));
             }
         }
+    }
+    #[test]
+    fn frontier_value() {
+        assert_eq!(frontier().to_string(), "2392312122059207475200");
     }
     #[test]
     fn parallel_parity() {
