@@ -126,6 +126,21 @@ python3 syracuse.py --database syracuse.sqlite3 --export-csv results.csv
 
 Do not upload research databases to GitHub; keep backups before large experiments.
 
+## Beyond the published Collatz verification frontier (experimental)
+
+The Rust scanner accepts **arbitrarily large decimal range endpoints**, and `--frontier` starts at **2075 × 2^60 + 1 = 2,392,312,122,059,207,475,201**, using a previously reported verification bound as a **research reference**, not as a guarantee of the current world frontier. Check the external verification status independently before any novelty or record claims.
+
+```bash
+cd rust
+cargo +1.88.0 build --release
+./target/release/syracuse-rs --frontier --count 1000000 --workers 4
+./target/release/syracuse-rs --start 2392312122059207475201 --end 2392312122059207476200 --workers 4
+```
+
+**No SQLite database is created in this mode.** It reports completed/limited trajectories, longest stopping time and highest peak within the selected range. There is **no checkpoint/resume support** for large-number ranges yet. SQLite mode remains limited to signed 64-bit integer keys. This is trajectory exploration, **not** an independently audited world-record verification.
+
+A 1,000-number smoke test immediately above the reference frontier completed all trajectories within the 100,000-step budget. The longest was **901 steps at 2392312122059207475311**, and the highest peak was **1966096164757168791836944 at 2392312122059207475849**. These are local sample records only.
+
 ## Speed and SQLite tuning (November 2026)
 
 The default SQLite batch size is now **16,384 rows** (previously 4,096), reducing the number of transactions. Connection-local cache and in-memory temporary storage are enabled without changing SQLite's synchronous or journal durability policy. Existing databases are not migrated or deleted.
