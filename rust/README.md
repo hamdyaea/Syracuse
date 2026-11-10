@@ -102,3 +102,16 @@ To test future performance without touching your main research database:
 ```
 
 Do not compare a fully cached SQLite rerun to a fresh scan.
+
+## Fused odd/even fast path
+
+For native `u128` trajectories, the engine now combines an odd `3n+1`
+transition with the immediately following powers-of-two divisions. It still
+counts **every original Collatz step**, records the peak **before** shifting,
+and honors exact `--max-steps` boundaries. Added tests cover short step
+limits and overflow around `u128::MAX`.
+
+In a small four-worker, no-database benchmark over 210,000,001–212,000,000,
+the previous version took **0.384 s** and the new version **0.281 s**
+(about **27% less time**). These are single-run observations and do not
+measure SQLite write throughput; repeat trials before generalizing.
