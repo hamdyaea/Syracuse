@@ -81,3 +81,24 @@ experiment. Both share the same schema. Keep local DBs out of GitHub.
 
 **Important:** without `--database`, progress is displayed but results are
 not saved; there is no resume capability. Progress and ETA are estimates.
+
+## Arithmetic optimization (November 2026)
+
+The hot path now keeps the running peak in native `u128` and converts it
+to `BigUint` only once per starting value (unless an actual overflow requires
+arbitrary precision). This removes repeated heap allocations during the
+frequent odd steps, without changing Collatz steps or the stored peak.
+
+On a **fresh temporary SQLite database**, a 1,000,000-integer scan over
+200,000,001–201,000,000 took **2.715 s** with four workers on the development
+machine. This is a single measurement, not an apples-to-apples speedup claim
+against the older version; use the same range and hardware for comparisons.
+
+To test future performance without touching your main research database:
+
+```bash
+./target/release/syracuse-rs --start 200000001 --end 201000000 \
+  --workers 4 --database /tmp/syracuse-benchmark.sqlite3
+```
+
+Do not compare a fully cached SQLite rerun to a fresh scan.
