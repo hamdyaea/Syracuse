@@ -41,6 +41,8 @@ small{color:#8da7cc}a{color:#72d9ff}
 <div class="stat"><small>Maximum value</small><strong id="peak"></strong></div>
 <div class="stat"><small>Convergence</small><strong id="status"></strong></div>
 <label>Playback</label><button id="play">Pause</button><button id="reset">Restart</button>
+<label>Trajectory position</label><input id="position" type="range" min="0" max="1000" value="0" aria-label="Trajectory position">
+<button id="rotate">Stop rotation</button>
 <label>Playback speed</label><input id="speed" type="range" min="1" max="100" value="20">
 <label>3D spiral width</label><input id="radius" type="range" min="1" max="100" value="42">
 <label>Camera elevation</label><input id="elevation" type="range" min="-80" max="80" value="22">
@@ -53,13 +55,15 @@ const values=raw.values.map(x=>BigInt(x));
 const log2big=n=>{if(n<=0n)return 0;const b=n.toString(2);return b.length-1+Math.log2(parseInt(b.slice(0,Math.min(52,b.length)),2)/2**(Math.min(52,b.length)-1))};
 const heights=values.map(log2big),maxHeight=Math.max(1,...heights);
 const canvas=document.getElementById('scene'),ctx=canvas.getContext('2d');
-let angle=.4,elev=.38,zoom=1,playing=true,shown=1,last=0,drag=false,lastX=0,lastY=0;
+let angle=.4,elev=.38,zoom=1,playing=true,rotating=true,shown=1,last=0,drag=false,lastX=0,lastY=0;
 document.getElementById('start').textContent=raw.values[0];
 document.getElementById('steps').textContent=(values.length-1).toLocaleString();
 document.getElementById('peak').textContent=raw.peak;
 document.getElementById('status').textContent=raw.converged?'Reached 1':'Step limit reached';
 document.getElementById('play').onclick=()=>{playing=!playing;document.getElementById('play').textContent=playing?'Pause':'Play'};
 document.getElementById('reset').onclick=()=>{shown=1;playing=true;document.getElementById('play').textContent='Pause'};
+document.getElementById('rotate').onclick=()=>{rotating=!rotating;document.getElementById('rotate').textContent=rotating?'Stop rotation':'Start rotation'};
+document.getElementById('position').oninput=e=>{shown=Math.max(1,Math.round(1+(values.length-1)*Number(e.target.value)/1000));playing=false;document.getElementById('play').textContent='Play'};
 canvas.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
 canvas.addEventListener('pointerup',()=>drag=false);
 canvas.addEventListener('pointermove',e=>{if(drag){angle+=(e.clientX-lastX)*.009;elev=Math.max(-1.4,Math.min(1.4,elev+(e.clientY-lastY)*.008));lastX=e.clientX;lastY=e.clientY}});
@@ -70,6 +74,7 @@ const dpr=Math.min(2,window.devicePixelRatio||1),w=canvas.clientWidth,h=canvas.c
 if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)}
 ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
 if(playing&&time-last>30){shown=Math.min(values.length,shown+Math.max(1,Math.round(+document.getElementById('speed').value/5)));last=time;if(shown>=values.length){playing=false;document.getElementById('play').textContent='Play'}}
+document.getElementById('position').value=Math.round((shown-1)/Math.max(1,values.length-1)*1000);
 const rad=+document.getElementById('radius').value/100;
 const cx=w/2,cy=h*.53,scale=Math.min(w,h)*.39*zoom;
 const point=i=>{
@@ -84,7 +89,7 @@ ctx.strokeStyle='#56d9ff';ctx.shadowColor='#27bbff';ctx.shadowBlur=8;ctx.stroke(
 for(let i=0;i<shown;i+=Math.max(1,Math.floor(shown/150))){const [x,y]=point(i);ctx.fillStyle=palette(i/values.length);ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()}
 const [x,y]=point(shown-1);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fill();
 ctx.fillStyle='#b6d2ed';ctx.font='13px system-ui';ctx.fillText('Step '+(shown-1)+' / '+(values.length-1),20,28);
-if(!drag)angle+=.0016;
+if(!drag&&rotating)angle+=.0016;
 requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);
