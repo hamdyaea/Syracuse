@@ -21,6 +21,20 @@ The conjecture states that every positive integer eventually reaches 1 when even
 - Distinguishes `reached_1`, `limit`, and `cycle`
 - CSV export and automated tests
 
+## Interactive inverse Collatz tree (November 2026)
+
+Generate a self-contained, offline HTML explorer with pan, zoom, selectable
+nodes, highlighted paths to 1, and depth-by-depth animation:
+
+```bash
+python3 inverse_explorer.py --depth 20 --max-nodes 600 --output inverse-tree-interactive.html
+xdg-open inverse-tree-interactive.html
+```
+
+This complements `inverse_tree.py` (SVG/JSON exports). The generated graph
+shows only the finite inverse branches rooted at 1; it is **not** a proof of
+universal convergence or a validation of any proposed complete proof.
+
 ## Native Rust acceleration and interactive research visuals (November 2026)
 
 The experimental [Rust engine](rust/README.md) now supports Rayon parallel
