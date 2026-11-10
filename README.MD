@@ -10,6 +10,12 @@ A Python 3 research CLI for exploring the **Collatz conjecture**, also known as 
 
 The conjecture states that every positive integer eventually reaches 1 when even numbers are divided by 2 and odd numbers are replaced with `3n + 1`. This has **not been proven** for all positive integers. Computational checks do not constitute a mathematical proof.
 
+## Animated 3D visualization
+
+[![Animated Collatz 3D trajectory for 837799](docs/gallery/collatz-3d-preview.gif)](docs/gallery/syracuse-3d.html)
+
+*Animated preview: the 524-step trajectory of 837799, shown with a rotating logarithmic 3D embedding. [Open the full interactive 3D explorer](docs/gallery/syracuse-3d.html) for rotation, zoom, and playback controls. [Explore the inverse Collatz tree](docs/gallery/inverse-tree-interactive.html).*
+
 ## Features
 
 - Exact integer arithmetic; original, uncompressed Collatz step counts
