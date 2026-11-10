@@ -276,3 +276,15 @@ The largest observed peak across all three runs remains
 **1358736166790410296614642249488** at **2392312122059309050532**.
 This is exploratory computation, not an independently audited proof or
 verified world record.
+
+### Fourth consecutive 100-million-number frontier run (10 November 2026)
+
+The fourth range, **2392312122059507475201** through
+**2392312122059607475200**, completed **100,000,000** trajectories in
+100 checkpointed chunks, with **0 unresolved**. Python independently
+recomputed the reported record trajectories in each chunk. Longest:
+**1,281 steps at 2392312122059525053377**. Highest peak:
+**235359882138362739496940332996** at **2392312122059516241214**.
+Combined with the preceding three contiguous runs, **400,000,000** consecutive
+starting values have been explored above the historical reference frontier.
+This does not establish a world record or an independent exhaustive audit.
