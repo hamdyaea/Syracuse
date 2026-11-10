@@ -22,7 +22,7 @@ On other machines, use a recent stable Rust toolchain and plain `cargo`.
 
 For reproducible timing, compare equivalent ranges and step limits and
 exclude Python's SQLite persistence overhead when benchmarking only the
-computational engine. Rust's current scan does **not** write results to SQLite.
+computational engine. Rust can now write to the **existing Python-compatible results schema** with `--database`. SQLite persistence is optional; without `--database` scans remain in-memory and faster.
 
 ## Animated interactive 3D trajectories
 
@@ -61,3 +61,23 @@ claims of a complete proof.
 
 **Do not delete or replace the Python databases.** The Python CLI remains
 the supported persistence and visualization workflow until parity is proven.
+## Progress and persistent range scans
+
+```bash
+./target/release/syracuse-rs --start 100000001 --end 200000000 --workers 4 --database syracuse.sqlite3 --batch-size 4096
+```
+
+Progress includes percent, processed values, throughput and ETA. In database
+mode each committed batch survives interruption, and rerunning the command
+skips completed rows. Limited rows are retried only when `--max-steps` is
+increased. Database schema matches Python's `results(start,steps,peak,status,max_steps)`.
+SQLite uses a signed 64-bit integer primary key: ranges must end at or below
+9,223,372,036,854,775,807. For giant arbitrary precision starting values
+use the Python random explorer or the single-number Rust mode.
+
+**Database choice:** use `syracuse.sqlite3` to share and resume the existing
+Python contiguous scan, or `syracuse-rust.sqlite3` to keep an independent
+experiment. Both share the same schema. Keep local DBs out of GitHub.
+
+**Important:** without `--database`, progress is displayed but results are
+not saved; there is no resume capability. Progress and ETA are estimates.
