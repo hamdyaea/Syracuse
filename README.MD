@@ -132,11 +132,11 @@ The default SQLite batch size is now **16,384 rows** (previously 4,096), reducin
 
 On a **fresh temporary SQLite database**, four-worker scans of 2,000,000 integers (310,000,001–312,000,000) took **5.578 s** with 4,096-row batches and **4.803 s** with 16,384-row batches in an initial test (about 14% less elapsed time). In a later test with the updated connection tuning, timings were **6.610 s** and **5.718 s** respectively. These are single-run observations and are **not** a prediction for a 100-million-row run. Always benchmark using a fresh test database and identical range.
 
-**Disk-space caution:** large SQLite scans grow the database substantially. Check free space with `df -h .` and back up your database before major runs. For your next scan, consider:
+**Disk-space caution:** large SQLite scans grow the database substantially. Check free space with `df -h .` and back up your database before major runs. For a fresh run after deleting local SQLite files, consider:
 
 ```bash
 cd rust
-./target/release/syracuse-rs --start 300000001 --end 400000000 \
+./target/release/syracuse-rs --start 400000001 --end 500000000 \
   --workers 4 --max-steps 100000 --database ../syracuse.sqlite3 \
   --batch-size 16384
 ```
@@ -149,11 +149,16 @@ These are **local experimental observations**, not universal proofs or world rec
 
 | Experiment | Recorded result |
 |---|---|
-| Contiguous scan | 300,000,000 starting integers evaluated across successive ranges (based on reported runs) |
+| Contiguous scan | 400,000,000 starting integers evaluated across successive ranges (based on reported runs) |
 | Additional work in the previous Python run | 90,000,000 new integers in 843.79 seconds |
 | Rust scan 100,000,001–200,000,000 | 98,488,576 newly computed; 422.798 seconds; longest 953 steps at 169,941,673 |
 | Rust scan 200,000,001–300,000,000 | 100,000,000 newly computed; 406.687 seconds; longest 964 steps at 268,549,803 |
 | Highest peak in latter Rust scan | 6,404,797,161,121,264 at 210,964,383 |
+| Rust scan 300,000,001–400,000,000 | 100,000,000 newly computed; 341.693 seconds; 292,661 integers/s; 0 unresolved |
+| Longest trajectory in 300–400 M | 959 steps at 302,118,529 |
+| Highest peak in 300–400 M | **1,414,236,446,719,942,480** at **319,804,831** |
+| Longest trajectory in the reported 1–400 M contiguous scans | **964 steps** at **268,549,803** |
+| Highest peak in the reported 1–400 M contiguous scans | **1,414,236,446,719,942,480** at **319,804,831** |
 | Unresolved in that scan | 0 |
 | Longest trajectory among those 90 million | 949 steps, starting at 63,728,127 |
 | Largest peak among those 90 million | 2,185,143,829,170,100, starting at 80,049,391 |
@@ -161,11 +166,15 @@ These are **local experimental observations**, not universal proofs or world rec
 | Longest trajectory in 80-bit sample | 1,096 steps, starting at 1104823904239754287061021 |
 | Largest peak in 80-bit sample | 40,629,227,929,758,396,698,586,962,452 |
 
-The initial 100-million range was confirmed in SQLite; later range measurements are user-provided Rust output. The 90-million timing refers to the **previous Python implementation**. Record values above are scoped to their respective experiments, not necessarily global database records.
+The initial 100-million range was confirmed in SQLite; later range measurements are user-provided Rust output. The reported 300–400 M run took 341.693 s versus 422.798 s for 100–200 M, an approximately 19.2% reduction in elapsed time across different ranges and successive software versions; this is **not** a controlled same-workload benchmark. The 90-million timing refers to the **previous Python implementation**. Record values above are scoped to their respective experiments, not necessarily global database records.
 
 ![Exact trajectory of 837799](docs/collatz-837799.svg)
 
 ![80-bit sample record trajectories](docs/records-80bit.svg)
+
+## Data retention
+
+The original local SQLite databases used for these experiments were deleted at the researcher's request after the results above were documented. **GitHub contains the source code, charts and aggregate observations, not the 400-million-row dataset.** To regenerate it, run the Rust scanner with a new database path. Re-running a range after deletion recomputes it from scratch; there is no resume state without a database backup.
 
 ## Tests and project layout
 
