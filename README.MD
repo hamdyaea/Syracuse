@@ -8,6 +8,25 @@ Syracuse is an open-source research toolkit for investigating the **Collatz conj
 
 For any positive integer `n`: if `n` is even, divide by 2; otherwise compute `3n + 1`. The conjecture states that repeated application eventually reaches 1. **It remains unproved.** Finite computational experiments are not mathematical proofs.
 
+## Engineering portfolio: what this project demonstrates
+
+This repository is also a practical example of **Rust/Python systems engineering**, designed for reviewers assessing implementation quality, reproducibility and performance rather than only mathematical results.
+
+| Engineering area | Evidence in this repository |
+| --- | --- |
+| **Rust performance engineering** | Parallel range scans with Rayon, optimized integer arithmetic and arbitrary-precision fallback |
+| **Data engineering** | SQLite batch writes, resumable computation, documented storage boundaries and checkpoint validation |
+| **Reliability & correctness** | Reference-implementation comparisons, Rust and Python tests, explicit step limits and status reporting |
+| **Operational tooling** | CLI parameters for workers, ranges, progress reporting, batch sizes and restart behaviour |
+| **Scientific visualization** | Python-generated interactive HTML, SVG charts and finite inverse-tree exploration |
+| **Technical documentation** | Reproducible commands, bounded claims, benchmark caveats and clear distinction between evidence and proof |
+
+**Suggested review path:** start with [Rust implementation and usage](rust/README.md), inspect the [tests](tests/), review the [published results](results/) and then try the [interactive visualization gallery](docs/gallery/).
+
+**Research integrity:** all reported measurements are scoped to their documented runs. No finite computation proves the Collatz conjecture, and historical reference frontiers must not be interpreted as current world records.
+
+---
+
 ## Animated 3D trajectory
 
 [![Animated 3D Collatz trajectory for 837799](docs/gallery/collatz-3d-preview.gif)](docs/gallery/syracuse-3d.html)
